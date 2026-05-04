@@ -30,6 +30,7 @@ QUIET_START      = 1         # 1 AM  — no notifications
 QUIET_END        = 10        # 10 AM — resume
 CONFIG_FILE      = os.path.expanduser("~/.break_reminder.json")
 LOG_FILE         = os.path.expanduser("~/Library/Logs/break_reminder.log")
+PID_FILE         = os.path.expanduser("~/.break_reminder.pid")
 
 # ─── Message Bank (44 entries) ─────────────────────────────────────────────────
 REMINDERS = [
@@ -334,6 +335,22 @@ def setup_logging():
     )
 
 
+def acquire_pid_lock():
+    """Exit if another instance is already running."""
+    if os.path.exists(PID_FILE):
+        try:
+            existing_pid = int(open(PID_FILE).read().strip())
+            os.kill(existing_pid, 0)  # signal 0 = just check existence
+            print(f"Already running as PID {existing_pid}. Exiting.")
+            sys.exit(1)
+        except (ProcessLookupError, ValueError):
+            pass  # stale PID file — overwrite it
+    with open(PID_FILE, "w") as f:
+        f.write(str(os.getpid()))
+    import atexit
+    atexit.register(lambda: os.path.exists(PID_FILE) and os.remove(PID_FILE))
+
+
 def main():
     setup_logging()
     config = load_config()
@@ -348,14 +365,21 @@ def main():
         print(f"{'─'*52}\n")
         return
 
+    if "--reset" in sys.argv:
+        config["streak"] = 0
+        config["total_breaks"] = 0
+        save_config(config)
+        print("Streak and total breaks reset to 0.")
+        return
+
     if "--test" in sys.argv:
         logging.info("Sending test notification…")
-        config_obj = type("C", (), config)()
         r = BreakReminder(config)
         r._fire()
         logging.info("Test sent! Check your ntfy app.")
         return
 
+    acquire_pid_lock()
     daemon = BreakReminder(config)
     daemon.run()
 
