@@ -187,7 +187,7 @@ class BreakReminder:
         self.streak  = config.get("streak", 0)
         self.total   = config.get("total_breaks", 0)
         self._lock   = threading.Lock()
-        self._next   = time.monotonic() + random.randint(MIN_INTERVAL_SEC, MAX_INTERVAL_SEC)
+        self._next   = time.time() + random.randint(MIN_INTERVAL_SEC, MAX_INTERVAL_SEC)
 
     # ── Sending ────────────────────────────────────────────────────────────────
 
@@ -214,7 +214,7 @@ class BreakReminder:
 
         # Default next reminder (overridden if user taps Done/Snooze)
         with self._lock:
-            self._next = time.monotonic() + random.randint(MIN_INTERVAL_SEC, MAX_INTERVAL_SEC)
+            self._next = time.time() + random.randint(MIN_INTERVAL_SEC, MAX_INTERVAL_SEC)
 
     # ── Control topic listener ──────────────────────────────────────────────────
 
@@ -226,7 +226,7 @@ class BreakReminder:
                 self.config["streak"]       = self.streak
                 self.config["total_breaks"] = self.total
                 save_config(self.config)
-                self._next = time.monotonic() + random.randint(MIN_INTERVAL_SEC, MAX_INTERVAL_SEC)
+                self._next = time.time() + random.randint(MIN_INTERVAL_SEC, MAX_INTERVAL_SEC)
                 logging.info(f"✅ Done tapped | streak={self.streak} total={self.total}")
                 # Send a little confirmation back
                 ntfy_post(
@@ -241,7 +241,7 @@ class BreakReminder:
                 self.config["streak"]       = self.streak
                 self.config["total_breaks"] = self.total
                 save_config(self.config)
-                self._next = time.monotonic() + random.randint(MIN_INTERVAL_SEC, MAX_INTERVAL_SEC)
+                self._next = time.time() + random.randint(MIN_INTERVAL_SEC, MAX_INTERVAL_SEC)
                 logging.info(f"🏃 Working Out tapped | streak={self.streak} total={self.total}")
                 ntfy_post(
                     self.topic,
@@ -250,7 +250,7 @@ class BreakReminder:
                     tags="muscle",
                 )
             elif message == "snooze15":
-                self._next = time.monotonic() + 15 * 60
+                self._next = time.time() + 15 * 60
                 logging.info("⏰ Snoozed 15 min")
 
     def _listen_control(self):
@@ -299,7 +299,7 @@ class BreakReminder:
         logging.info(f"Break Reminder started")
         logging.info(f"  ntfy topic   : {self.topic}")
         logging.info(f"  control topic: {self.ctrl}")
-        mins = (self._next - time.monotonic()) / 60
+        mins = max(0, (self._next - time.time())) / 60
         logging.info(f"  first reminder in ~{mins:.0f} min")
 
         t = threading.Thread(target=self._listen_control, daemon=True)
@@ -308,12 +308,12 @@ class BreakReminder:
         while True:
             with self._lock:
                 due = self._next
-            if time.monotonic() >= due:
+            if time.time() >= due:
                 if self._in_quiet_hours():
                     wake  = self._next_wake_time()
                     delay = (wake - datetime.now()).total_seconds()
                     with self._lock:
-                        self._next = time.monotonic() + delay
+                        self._next = time.time() + delay
                     logging.info(f"Quiet hours — holding until {wake.strftime('%H:%M')}")
                 else:
                     self._fire()
